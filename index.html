@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MedRecall</title>
+
+<!-- iOS "Add to Home Screen" support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="MedRecall" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#2f6fed" />
+
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <h1>MedRecall</h1>
+</header>
+
+<main id="app">
+
+  <!-- RECORD TAB -->
+  <section id="tab-record" class="tab-panel active">
+    <div id="record-idle" class="stage">
+      <label class="field-label" for="record-doctor-select">Doctor</label>
+      <div class="record-doctor-row">
+        <select id="record-doctor-select">
+          <option value="" disabled selected>Choose a doctor…</option>
+        </select>
+        <button id="record-add-doctor-btn" class="text-button" type="button">+ Add doctor</button>
+      </div>
+
+      <label class="field-label" for="visit-type">Visit type</label>
+      <div class="segmented" id="visit-type-segmented">
+        <button type="button" class="segmented-option active" data-value="In-Person Visit">In-Person Visit</button>
+        <button type="button" class="segmented-option" data-value="Phone Call">Phone Call</button>
+      </div>
+      <p id="phone-call-hint" class="hint hidden">
+        For phone calls: put the call on speakerphone before recording — the browser can't tap into the call audio directly.
+      </p>
+
+      <div class="record-button-wrap">
+        <button id="start-record-btn" class="record-button" aria-label="Start recording" disabled>
+          <span class="mic-icon">●</span>
+        </button>
+        <p class="hint" id="start-record-hint">Choose a doctor above to begin</p>
+        <p class="hint whisper-badge">Transcribed by Whisper AI, running on your phone</p>
+      </div>
+    </div>
+
+    <div id="record-active" class="stage hidden">
+      <p class="visit-type-label" id="active-visit-type-label"></p>
+      <p class="timer" id="timer">00:00</p>
+      <div class="recording-indicator">
+        <span class="pulse-dot" id="pulse-dot"></span>
+        <p class="hint" id="recording-status-text">Whisper AI is transcribing in the background as you talk.</p>
+      </div>
+      <div class="live-transcript-wrap">
+        <p class="field-label">Transcript so far</p>
+        <div id="live-transcript" class="live-transcript" aria-live="polite">Listening…</div>
+      </div>
+      <button id="pause-resume-btn" class="pause-button">Pause</button>
+      <div class="record-button-wrap">
+        <button id="stop-record-btn" class="record-button stop" aria-label="Stop recording">
+          <span class="stop-icon">■</span>
+        </button>
+        <p class="hint">Tap to stop</p>
+      </div>
+    </div>
+
+    <div id="record-transcribing" class="stage hidden">
+      <p class="field-label">Finishing Up</p>
+      <div class="progress-bar-wrap">
+        <div id="transcribe-progress-bar" class="progress-bar-fill" style="width:100%"></div>
+      </div>
+      <p id="transcribe-status" class="hint">Finishing up your transcript…</p>
+      <p class="hint">Most of the transcript was already built in the background while you were recording, so this should just take a moment. (The very first time you use MedRecall, it also downloads a one-time ~40MB AI model, cached afterward.)</p>
+    </div>
+
+    <div id="record-review" class="stage hidden">
+      <p class="field-label">Review transcript</p>
+      <p class="hint">Edit anything the transcription missed before saving.</p>
+      <textarea id="review-transcript" rows="12"></textarea>
+      <button id="copy-review-btn" class="secondary-button copy-btn">Copy Transcript</button>
+      <button id="open-save-btn" class="primary-button">Save as Word Document</button>
+      <button id="discard-btn" class="secondary-button">Discard and start over</button>
+    </div>
+  </section>
+
+  <!-- HISTORY TAB -->
+  <section id="tab-history" class="tab-panel">
+    <div id="history-filters" class="history-filters hidden">
+      <input type="text" id="history-search" class="search-input" placeholder="Search doctor, title, or transcript…" />
+      <select id="history-doctor-filter">
+        <option value="">All Doctors</option>
+      </select>
+    </div>
+    <div id="history-empty" class="empty-state hidden">
+      <p class="empty-icon">🗂️</p>
+      <p class="empty-title">No saved visits yet</p>
+      <p class="hint">Recordings you save will show up here.</p>
+    </div>
+    <div id="history-no-matches" class="empty-state hidden">
+      <p class="empty-icon">🔍</p>
+      <p class="empty-title">No visits match</p>
+      <p class="hint">Try a different search or choose "All Doctors."</p>
+    </div>
+    <ul id="history-list" class="list"></ul>
+  </section>
+
+  <!-- DOCTORS TAB -->
+  <section id="tab-doctors" class="tab-panel">
+    <button id="add-doctor-btn" class="primary-button">+ Add Doctor</button>
+    <ul id="doctors-list" class="list"></ul>
+  </section>
+
+  <!-- SETTINGS TAB -->
+  <section id="tab-settings" class="tab-panel">
+    <div class="settings-block">
+      <h2>Google Drive</h2>
+      <p id="drive-status" class="hint">Not connected</p>
+      <button id="drive-connect-btn" class="primary-button">Sign in with Google</button>
+      <button id="drive-disconnect-btn" class="secondary-button hidden">Sign out</button>
+      <p class="hint">Only needed if you want the "Google Drive" save option. Local saves never need this.</p>
+      <p class="hint">Visit documents are saved inside a per-doctor subfolder of your Drive's "MedRecall" folder (e.g. MedRecall/Dr. Smith), created automatically the first time you save a visit for that doctor. Backups are saved directly in the MedRecall folder.</p>
+
+      <div id="drive-autosync-block" class="hidden">
+        <label class="toggle-row" for="drive-autosync-toggle">
+          <input type="checkbox" id="drive-autosync-toggle" />
+          <span>Auto-backup doctors &amp; visits to Drive</span>
+        </label>
+        <p id="drive-autosync-status" class="hint">Off</p>
+        <p class="hint">Keeps a single "MedRecall Backup.json" file, inside your Drive's MedRecall folder, in sync automatically whenever your doctor list or visit history changes.</p>
+      </div>
+    </div>
+
+    <div class="settings-block">
+      <h2>Backup &amp; Restore</h2>
+      <p class="hint">Your doctor list and visit history live only in this browser. Back them up regularly so you don't lose them if Safari clears site data, you switch phones, or you delete the app.</p>
+      <button id="backup-export-btn" class="primary-button">Download Backup</button>
+      <button id="backup-docx-btn" class="secondary-button">Download All Visits as Word Docs (.zip)</button>
+      <label class="field-label" for="backup-import-input">Restore from a backup file</label>
+      <input type="file" id="backup-import-input" accept="application/json,.json" class="file-input" />
+      <p id="backup-status" class="hint hidden"></p>
+    </div>
+
+    <div class="settings-block">
+      <h2>Privacy</h2>
+      <p class="hint">Transcription runs entirely on your phone using an open-source Whisper AI model loaded into the browser — your recording is never uploaded anywhere for this step. Transcripts are only sent to Google Drive if you explicitly choose that save destination.</p>
+    </div>
+
+    <div class="settings-block">
+      <h2>Recording consent</h2>
+      <p class="hint">Recording laws vary by state/country — some require everyone on a call to consent. Consider letting your provider know you're recording, especially for phone calls.</p>
+    </div>
+
+    <div class="settings-block">
+      <h2>App Lock</h2>
+      <p id="applock-status" class="hint">Off</p>
+      <button id="applock-enable-btn" class="primary-button">Enable Face ID Lock</button>
+      <button id="applock-disable-btn" class="secondary-button hidden">Turn Off</button>
+      <p class="hint">Requires Face ID or Touch ID set up on your iPhone. This puts a lock screen in front of the app — it doesn't encrypt the data itself, so treat it as a privacy screen rather than a vault.</p>
+
+      <label class="field-label" for="applock-pin-status">Backup PIN</label>
+      <p id="applock-pin-status" class="hint">Not set</p>
+      <button id="applock-set-pin-btn" class="secondary-button">Set a PIN</button>
+      <button id="applock-remove-pin-btn" class="secondary-button hidden">Remove PIN</button>
+      <p class="hint">Optional fallback for unlocking if Face ID ever fails or isn't available.</p>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tab-bar">
+  <button class="tab-bar-btn active" data-tab="tab-record">
+    <span class="tab-icon">🎙️</span><span>Record</span>
+  </button>
+  <button class="tab-bar-btn" data-tab="tab-history">
+    <span class="tab-icon">🕒</span><span>History</span>
+  </button>
+  <button class="tab-bar-btn" data-tab="tab-doctors">
+    <span class="tab-icon">🩺</span><span>Doctors</span>
+  </button>
+  <button class="tab-bar-btn" data-tab="tab-settings">
+    <span class="tab-icon">⚙️</span><span>Settings</span>
+  </button>
+</nav>
+
+<!-- SAVE MODAL -->
+<div id="save-modal" class="modal hidden">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <button id="save-cancel-btn" class="text-button">Cancel</button>
+      <h3>Save Visit</h3>
+      <button id="save-confirm-btn" class="text-button primary">Save</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label" for="save-doctor-select">Doctor</label>
+      <select id="save-doctor-select"></select>
+      <button id="save-add-doctor-btn" class="text-button">Add new doctor</button>
+
+      <label class="field-label" for="save-reason">Reason for visit (optional)</label>
+      <input type="text" id="save-reason" list="reason-suggestions" placeholder="e.g. Annual Physical, Follow-up, New Symptom" />
+      <datalist id="reason-suggestions">
+        <option value="Annual Physical">
+        <option value="Follow-up">
+        <option value="New Symptom">
+        <option value="Lab Results">
+        <option value="Prescription Refill">
+        <option value="Vaccination">
+        <option value="Specialist Referral">
+        <option value="Post-Op Check">
+      </datalist>
+
+      <label class="field-label" for="save-filename">File name</label>
+      <input type="text" id="save-filename" placeholder="e.g. Dr. Smith - Annual Checkup" />
+
+      <label class="field-label">Save to</label>
+      <div class="segmented" id="save-destination-segmented">
+        <button type="button" class="segmented-option active" data-value="local">This device</button>
+        <button type="button" class="segmented-option" data-value="drive">Google Drive</button>
+      </div>
+      <p id="save-error" class="error hidden"></p>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT VISIT MODAL -->
+<div id="edit-modal" class="modal hidden">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <button id="edit-cancel-btn" class="text-button">Cancel</button>
+      <h3>Edit Visit</h3>
+      <button id="edit-save-btn" class="text-button primary">Save</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label" for="edit-doctor-select">Doctor</label>
+      <select id="edit-doctor-select"></select>
+
+      <label class="field-label">Visit type</label>
+      <div class="segmented" id="edit-visit-type-segmented">
+        <button type="button" class="segmented-option" data-value="In-Person Visit">In-Person Visit</button>
+        <button type="button" class="segmented-option" data-value="Phone Call">Phone Call</button>
+      </div>
+
+      <label class="field-label" for="edit-reason">Reason for visit (optional)</label>
+      <input type="text" id="edit-reason" list="reason-suggestions" placeholder="e.g. Annual Physical, Follow-up, New Symptom" />
+
+      <label class="field-label" for="edit-filename">File name</label>
+      <input type="text" id="edit-filename" />
+
+      <label class="field-label" for="edit-transcript">Transcript</label>
+      <textarea id="edit-transcript" rows="10"></textarea>
+
+      <p class="hint">Saving updates the record here in MedRecall. To fix the Word document you already saved elsewhere, tap Download afterward to get a corrected copy.</p>
+      <p id="edit-error" class="error hidden"></p>
+    </div>
+  </div>
+</div>
+
+<!-- APP LOCK SCREEN -->
+<div id="lock-screen" class="lock-screen hidden">
+  <div class="lock-content">
+    <p class="lock-icon">🔒</p>
+    <h2>MedRecall Locked</h2>
+    <p class="hint">Unlock with Face ID, or use your PIN if it's set up.</p>
+    <button id="unlock-btn" class="primary-button">Unlock</button>
+    <button id="use-pin-link-btn" class="text-button hidden">Use PIN instead</button>
+
+    <div id="pin-entry" class="pin-entry hidden">
+      <input type="password" id="pin-entry-input" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="Enter PIN" />
+      <button id="pin-entry-unlock-btn" class="primary-button">Unlock with PIN</button>
+    </div>
+
+    <p id="lock-error" class="error hidden"></p>
+
+    <button id="lock-reset-btn" class="text-button lock-reset-link">Trouble unlocking? Turn off app lock</button>
+  </div>
+</div>
+
+<!-- SET PIN MODAL -->
+<div id="pin-setup-modal" class="modal hidden">
+  <div class="modal-sheet small">
+    <div class="modal-header">
+      <button id="pin-setup-cancel-btn" class="text-button">Cancel</button>
+      <h3>Set a PIN</h3>
+      <button id="pin-setup-save-btn" class="text-button primary">Save</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label" for="pin-setup-new">New PIN (4-8 digits)</label>
+      <input type="password" id="pin-setup-new" inputmode="numeric" pattern="[0-9]*" maxlength="8" />
+      <label class="field-label" for="pin-setup-confirm">Confirm PIN</label>
+      <input type="password" id="pin-setup-confirm" inputmode="numeric" pattern="[0-9]*" maxlength="8" />
+      <p id="pin-setup-error" class="error hidden"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ADD DOCTOR MODAL -->
+<div id="add-doctor-modal" class="modal hidden">
+  <div class="modal-sheet small">
+    <div class="modal-header">
+      <button id="add-doctor-cancel-btn" class="text-button">Cancel</button>
+      <h3>New Doctor</h3>
+      <button id="add-doctor-confirm-btn" class="text-button primary">Add</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label" for="new-doctor-name">Name</label>
+      <input type="text" id="new-doctor-name" placeholder="e.g. Dr. Smith" />
+      <label class="field-label" for="new-doctor-specialty">Specialty (optional)</label>
+      <input type="text" id="new-doctor-specialty" placeholder="e.g. Cardiology" />
+    </div>
+  </div>
+</div>
+
+<!-- Toast for brief status messages -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="docx-builder.js"></script>
+<script src="pdf-builder.js"></script>
+<script src="config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
